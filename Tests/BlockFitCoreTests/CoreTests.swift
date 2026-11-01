@@ -218,3 +218,19 @@ struct LevelTests {
         }
     }
 }
+
+struct HintTests {
+    @Test func oneAtATimeAndNeverRepeated() {
+        var h = HintSystem()
+        #expect(h.request(.dragPointer, level: 1) == .dragPointer)
+        #expect(h.request(.goalChipPulse, level: 3) == nil)     // one active already
+        h.dismiss()
+        #expect(h.request(.dragPointer, level: 1) == nil)        // consumed
+        #expect(h.request(.goalChipPulse, level: 2) == nil)      // wrong level
+        #expect(h.request(.goalChipPulse, level: 3) == .goalChipPulse)
+    }
+    @Test func analyticsNamesSnakeCase() {
+        #expect(AnalyticsEvent.appOpen(sessionIndex: 1).name == "app_open")
+        #expect(AnalyticsEvent.linesClear(count: 3, combo: 3, streak: 1, comet: false).name == "lines_clear")
+    }
+}
