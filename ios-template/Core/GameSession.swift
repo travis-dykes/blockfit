@@ -6,6 +6,7 @@ public struct MoveOutcome: Equatable, Sendable {
     public var trayRefilled: Bool
     public var gameOver: Bool
     public var nearMiss: NearMiss?
+    public var won = false
 }
 
 /// Classic (endless) rules. Gameplay reads this; it never owns rules.
@@ -20,11 +21,18 @@ public struct GameSession: Sendable {
     public private(set) var traysDealt = 0
     public private(set) var isGameOver = false
     public private(set) var nearMiss: NearMiss?
+    /// Levels mode only; nil in Classic.
+    public let goal: LevelGoal?
+    public private(set) var goldCollected = 0
+    public private(set) var moves = 0
+    public private(set) var isWon = false
     private var rng: SeededRNG
     private let generator: TrayGenerator
 
     /// `initialTray` overrides the first dealt tray (debug setups, e.g. the Gate 0 capture).
-    public init(seed: UInt64, config: GameConfig = .defaults, board: Board? = nil, initialTray: [Piece]? = nil) {
+    public init(seed: UInt64, config: GameConfig = .defaults, board: Board? = nil, initialTray: [Piece]? = nil,
+                goal: LevelGoal? = nil) {
+        self.goal = goal
         self.config = config
         self.board = board ?? Board(size: config.boardSize)
         self.rng = SeededRNG(seed: seed)
@@ -47,7 +55,7 @@ public struct GameSession: Sendable {
     }
 
     public func canPlace(slot: Int, at origin: GridPoint) -> Bool {
-        guard !isGameOver, tray.indices.contains(slot), let p = tray[slot] else { return false }
+        guard !isGameOver, !isWon, tray.indices.contains(slot), let p = tray[slot] else { return false }
         return board.canPlace(p, at: origin)
     }
 
@@ -72,7 +80,17 @@ public struct GameSession: Sendable {
                                boardEmptyAfter: board.isEmpty, config: config.scoring)
         score += ms.total
 
+        moves += 1
+        goldCollected += clear.goldCollected + (comet?.goldCollected ?? 0)
+        if let goal, goal.progress(gold: goldCollected, score: score, lines: linesTotal) >= goal.target {
+            isWon = true
+        }
+
         var refilled = false
+        if isWon {
+            return MoveOutcome(clear: clear, comet: comet, cometPath: cometPath, score: ms,
+                               trayRefilled: false, gameOver: false, nearMiss: nil, won: true)
+        }
         if tray.allSatisfy({ $0 == nil }) { dealTray(); refilled = true }
         if !MoveFinder.hasAnyMove(tray: tray, board: board) {
             isGameOver = true

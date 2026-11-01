@@ -159,3 +159,62 @@ struct ConfigTests {
         #expect(cfg == GameConfig.defaults)
     }
 }
+
+struct LevelTests {
+    static func loadLevels() throws -> [LevelData] {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("ios-template/Levels/levels")
+        let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return try files.map { try LevelLoader.decode(Data(contentsOf: $0)) }
+    }
+
+    @Test func allHandBuiltLevelsLoad() throws {
+        let levels = try Self.loadLevels()
+        #expect(levels.count == 10)
+        for lv in levels {
+            let s = try LevelLoader.makeSession(lv)
+            #expect(s.board.linesToClear().isEmpty, "level \(lv.id) starts with a full line")
+            #expect(s.tray.count == 3)
+        }
+    }
+
+    @Test func levelOneWinsInOneMove() throws {
+        let lv = try Self.loadLevels()[0]
+        var s = try LevelLoader.makeSession(lv)
+        let slot = s.tray.firstIndex { $0?.id == "i3h" }!
+        let out = s.place(slot: slot, at: GridPoint(row: 4, col: 5))
+        #expect(out?.won == true && s.isWon)
+    }
+
+    @Test func goldLevelsWinWithIntendedMove() throws {
+        let lv = try Self.loadLevels()[2]    // level 3: i2v at col 5 clears rows 6 & 7 with 3 gold
+        var s = try LevelLoader.makeSession(lv)
+        let out = s.place(slot: 0, at: GridPoint(row: 6, col: 5))
+        #expect(out?.won == true)
+        #expect(s.goldCollected == 3)
+    }
+
+    @Test func starsRule() {
+        #expect(Stars.rate(moves: 1, par: 1) == 3)
+        #expect(Stars.rate(moves: 3, par: 1) == 2)
+        #expect(Stars.rate(moves: 9, par: 1) == 1)
+        #expect(Stars.rate(moves: 1, par: 1, boostersUsed: 1) == 2)
+    }
+
+    @Test func solverIsDeterministic() throws {
+        let lv = try Self.loadLevels()[0]
+        #expect(Solver.winRate(lv, runs: 5) == Solver.winRate(lv, runs: 5))
+        #expect(Solver.winRate(lv, runs: 5) == 1.0)
+    }
+
+    @Test func generatorProducesValidBoards() {
+        var rng = SeededRNG(seed: 3)
+        for id in 11...20 {
+            let lv = LevelGenerator.candidate(id: id, params: LevelGenerator.params(forLevel: id), rng: &rng)
+            let b = try? LevelLoader.makeBoard(lv)
+            #expect(b != nil && b!.linesToClear().isEmpty)
+        }
+    }
+}

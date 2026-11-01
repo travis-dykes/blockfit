@@ -1,0 +1,26 @@
+{
+ "id": 10,
+ "goal": {
+  "collectGold": {
+   "_0": 2
+  }
+ },
+ "board": [
+  "........",
+  "........",
+  "bbbbbb..",
+  "bGbbbb..",
+  "bbbbbb..",
+  "bbbbGb..",
+  "bbbbbb..",
+  "b#bbbb.."
+ ],
+ "tray": [
+  "i2v",
+  "square2",
+  "l3_0"
+ ],
+ "par": 5,
+ "guaranteeTrays": 10,
+ "seed": 10
+}
