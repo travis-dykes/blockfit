@@ -1,6 +1,6 @@
 # CLAUDE.md — Block Fit
 
-Agent-facing guide for this repo. Read product.md, design.md, roadmap.md and backlog.md before changing behavior. **Current milestone: M0 Greybox. Do not build meta, economy or monetization until roadmap.md says the earlier gate passed.**
+Agent-facing guide for this repo. Read product.md, design.md, roadmap.md and backlog.md before changing behavior. **Status: M0–M3 logic and UI written ahead of the human gates at the owner's explicit request, all UNCOMPILED. First action on a Mac: `swift test`, then Xcode build, fix errors. Gates (0/1/2/3) are still unpassed.** Pure-logic folders (Economy, Persistence, Monetization, Meta) live under `ios-template/Core/` so SwiftPM can test them.
 
 ## Stack
 - Swift 6, Swift Concurrency. **SpriteKit** for gameplay, **SwiftUI** for menus, meta and shop.
