@@ -33,6 +33,12 @@ final class BoardScene: SKScene {
     private let traySlotScale: CGFloat = 0.6
 
     var onGameOver: ((Int) -> Void)?
+    /// Levels mode callbacks: (moves) / ().
+    var onLevelWon: ((Int) -> Void)?
+    var onLevelLost: (() -> Void)?
+    var onBoostersChanged: (() -> Void)?
+    private let goalLabel = SKLabelNode()
+    private var smashMode = false
     private var seed: UInt64
 
     // MARK: Init
@@ -42,6 +48,13 @@ final class BoardScene: SKScene {
         self.cometEnabled = cometEnabled
         self.seed = seed
         self.session = BoardScene.makeSession(seed: seed, config: cfg, comboSetup: comboSetup)
+        super.init(size: CGSize(width: 390, height: 844))
+        scaleMode = .resizeFill
+    }
+    /// Levels / Daily: scene driven by a prepared session.
+    init(session: GameSession, seed: UInt64) {
+        self.session = session
+        self.seed = seed
         super.init(size: CGSize(width: 390, height: 844))
         scaleMode = .resizeFill
     }
@@ -99,13 +112,16 @@ final class BoardScene: SKScene {
         styleLabel(scoreLabel, size: Theme.FontSize.l, color: Theme.ink)
         scoreLabel.position = CGPoint(x: size.width / 2, y: headerY - 12)
         content.addChild(scoreLabel)
+        styleLabel(goalLabel, size: Theme.FontSize.s, color: Theme.yellow)
+        goalLabel.position = CGPoint(x: size.width / 2, y: headerY - headerH / 2 - 16)
+        content.addChild(goalLabel)
         styleLabel(bestLabel, size: Theme.FontSize.s, color: Theme.ink)
         bestLabel.horizontalAlignmentMode = .right
         bestLabel.position = CGPoint(x: size.width - margin - 14, y: headerY - 5)
         content.addChild(bestLabel)
 
         // Board
-        let boardTop = headerY - headerH / 2 - 24
+        let boardTop = headerY - headerH / 2 - 28
         boardOrigin = CGPoint(x: (size.width - boardH) / 2, y: boardTop - boardH)
         let frame = SKShapeNode(rectOf: CGSize(width: boardH + 16, height: boardH + 16), cornerRadius: 14)
         frame.fillColor = Theme.boardWell; frame.strokeColor = Theme.ink; frame.lineWidth = 4
@@ -174,7 +190,13 @@ final class BoardScene: SKScene {
 
     private func syncHUD() {
         scoreLabel.text = "\(session.score)"
-        bestLabel.text = "BEST \(max(best, session.score))"
+        bestLabel.text = session.goal == nil ? "BEST \(max(best, session.score))" : ""
+        if let g = session.goal {
+            let p = g.progress(gold: session.goldCollected, score: session.score, lines: session.linesTotal)
+            let name: String
+            switch g { case .collectGold: name = "GOLD"; case .reachScore: name = "SCORE"; case .clearLines: name = "LINES" }
+            goalLabel.text = "\(name) \(min(p, g.target))/\(g.target)"
+        } else { goalLabel.text = "" }
     }
 
     private func pieceNode(_ piece: Piece, cell pitch: CGFloat) -> SKNode {
@@ -208,8 +230,28 @@ final class BoardScene: SKScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
         let p = t.location(in: self)
-        if session.isGameOver { restart(seed: seed &+ 1); return }   // deterministic seed chain (rule 2)
+        if session.isGameOver { if session.goal == nil { restart(seed: seed &+ 1) }; return }   // deterministic seed chain (rule 2)
         guard !busy, dragSlot == nil else { return }
+        if smashMode {
+            smashMode = false
+            let col = Int(((p.x - boardOrigin.x) / cell).rounded(.down))
+            let row = 7 - Int(((p.y - boardOrigin.y) / cell).rounded(.down))
+            let gp = GridPoint(row: row, col: col)
+            guard session.board.contains(gp) else { return }
+            let color = Theme.brick(.steel)
+            if let r = session.smash(at: gp), !(r.clearedCells.isEmpty && r.steelCracked.isEmpty) {
+                let ball = makeBall(); ball.position = paddle.position; addChild(ball)
+                ball.run(.sequence([.move(to: cellCenter(gp), duration: 0.12), .removeFromParent()]))
+                run(.sequence([.wait(forDuration: 0.12), .run { [weak self] in
+                    self?.burst(at: self?.cellCenter(gp) ?? .zero, color: color)
+                    self?.syncBoard(); self?.syncHUD()
+                    self?.onBoostersChanged?()
+                    if let s = self?.session, s.isWon { self?.onLevelWon?(s.moves) }
+                    else if let s = self?.session, s.isGameOver { self?.showGameOver() }
+                }]))
+            }
+            return
+        }
         for i in 0..<3 where session.tray.indices.contains(i) {
             guard let piece = session.tray[i] else { continue }
             let slot = traySlots[i]
@@ -349,6 +391,7 @@ final class BoardScene: SKScene {
             self.syncBoard(); self.syncHUD()
             if out.trayRefilled { self.syncTray(animated: true) }
             self.busy = false
+            if out.won { Haptics.impact(.heavy); self.onLevelWon?(self.session.moves); return }
             if out.gameOver { self.best = max(self.best, self.session.score); self.showGameOver() }
         }]))
         if !out.clear.isEmpty { syncHUDScoreLater(after: total * 0.5) }
@@ -475,6 +518,7 @@ final class BoardScene: SKScene {
             let l = SKLabelNode(text: s); styleLabel(l, size: size, color: color)
             l.position = CGPoint(x: self.size.width / 2, y: y); overlay.addChild(l)
         }
+        if session.goal != nil { Haptics.warning(); onLevelLost?(); return }
         label("SO CLOSE!", Theme.FontSize.l, size.height * 0.62, Theme.yellow)
         label("SCORE \(session.score)", Theme.FontSize.m, size.height * 0.62 - 40, .white)
         label("BEST \(max(best, session.score))", Theme.FontSize.s, size.height * 0.62 - 66, Theme.mutedInk)
@@ -482,6 +526,20 @@ final class BoardScene: SKScene {
         Haptics.warning()
         onGameOver?(session.score)
     }
+
+    // MARK: Boosters (inventory is checked/decremented by AppState before calling these)
+    func performUndo() -> Bool {
+        guard !busy, session.undo() else { return false }
+        overlay.removeAllChildren(); syncBoard(); syncTray(); syncHUD(); return true
+    }
+    func performReroll() -> Bool {
+        guard !busy, session.reroll() else { return false }
+        syncTray(animated: true); syncHUD()
+        if session.isGameOver { showGameOver() }
+        return true
+    }
+    func beginSmash() { smashMode = true }
+    var canUndo: Bool { session.canUndo }
 
     func restart(seed: UInt64, cometEnabled: Bool? = nil, comboSetup: Bool = false) {
         self.seed = seed

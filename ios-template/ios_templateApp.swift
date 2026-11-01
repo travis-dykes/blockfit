@@ -1,17 +1,27 @@
 //
 //  ios_templateApp.swift
-//  ios-template
-//
-//  Created by Travis Dykes on 6/18/26.
+//  Block Fit (project still named ios-template)
 //
 
 import SwiftUI
+#if canImport(BlockFitCore)
+import BlockFitCore
+#endif
 
 @main
 struct ios_templateApp: App {
+    @StateObject private var app = AppState(store: FileSaveStore(url: ios_templateApp.saveURL))
+
+    static var saveURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("blockfit-save.json")
+    }
+
+    init() {
+        try? FileManager.default.createDirectory(at: Self.saveURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    }
+
     var body: some Scene {
-        WindowGroup {
-            GameView()
-        }
+        WindowGroup { RootView().environmentObject(app) }
     }
 }

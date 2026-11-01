@@ -17,6 +17,7 @@ public struct SaveGame: Codable, Equatable, Sendable {
     public var removeAds = false
     public var starterPackShown = false
     public var sessionIndex = 0
+    public var lastFreeBoosterDay = 0
     public var settings = Settings()
 
     public struct Settings: Codable, Equatable, Sendable {
