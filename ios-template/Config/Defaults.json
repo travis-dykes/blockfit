@@ -1,0 +1,7 @@
+{
+  "boardSize": 8,
+  "scoring": { "cellPoints": 1, "lineBase": 10, "streakStep": 0.5, "streakCap": 3.0, "perfectClearBonus": 300 },
+  "tray": { "size": 3, "classicGuaranteeTrays": 3 },
+  "comet": { "enabled": false, "minLines": 2, "maxBricks": 3 },
+  "pieceWeights": { "dot": 4, "i2": 8, "i3": 8, "i4": 5, "i5": 3, "square2": 7, "square3": 2, "l3": 7, "l5": 3 }
+}
